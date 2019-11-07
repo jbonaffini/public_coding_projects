@@ -1,2 +1,18 @@
 # UVA_ME_shared
 UVA ME program shared code
+
+## Contents
+Shared code for BME 6310 Computational BME Final Project
+
+  - Reproduction of figure from the scientific article [Reduced model to predict thrombin and fibrin during thrombosis on collagen/tissue factor under venous flow: Roles of γ’-fibrin and factor XIa](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1007266) from the [PLOS Journal](https://www.plos.org/) of [Computational Biology](https://journals.plos.org/ploscompbiol/)
+
+## Standards
+All files are to contain no spaces, just use underscores
+    
+  - For example: instead of 
+  
+      ```"my file.txt"```
+      
+    use 
+    
+      ```"my_file.txt"```
