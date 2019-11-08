@@ -1,0 +1,7 @@
+*.PNG
+*.asv
+*.docx#
+~*
+*.jar
+*.Rhistory
+*.RData
