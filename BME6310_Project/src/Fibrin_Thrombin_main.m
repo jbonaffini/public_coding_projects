@@ -1,6 +1,6 @@
 
 % Using ode45
-%    [TF*	Xa		IXa		XIa		Fibrin		IIa		ES		yS]
+%    [TF*	Xa		IXa		XIa		Fibrin		ES		yS		IIa]
 c0 = [1		0.17	0.09	.031		18		1.4		2.8		0.1];
 c0 = [1		0.17	0.09	.031		18		0		0		1.4];
 
