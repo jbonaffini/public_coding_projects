@@ -1,18 +1,15 @@
-function [ddt] = Fibrin_Thrombin_ode (t,c,param)
+function [ddt] = Fibrin_Thrombin_ode (t,c,p)
 
-	k_i_TF = log(2) / 180;
-	k_i = log(2) / 60;
-	k_elute = log(2) / 2;
-	n = [1 1 1 0.18 0.05 0.36 1];
-	a = [0.48 0.32 5.53 24.7 58.8 4.98*10^-5 0.065];
-	E_O_total = 1.6 * c(5);
-	y_O_total = 0.3 * c(5);
-	Ek_f = 280;
-	yk_f = 10;
-	Ek_r = 280;
-	yk_r = 10;
+	% constants
+	
+	k_i_TF = p.k_i_TF; k_i = p.k_i; k_elute = p.k_elute;
+	n = p.n; a = p.a;
+	E_O_total = p.E_O_total * c(5); 
+	Ek_f = p.Ek_f; Ek_r = p.Ek_r;
+	y_O_total = p.y_O_total * c(5);
+	yk_f = p.yk_f; yk_r = p.yk_r;
 
-% 	ddt = [0 0 0 0 0 0 0 0];
+	% ODEs
 	
 	ddt(1) = -k_i_TF * c(1); % dTF/dt
 	ddt(2) = a(1) * c(1) + a(3) * c(3) - k_i * c(2); % dXa/dt
