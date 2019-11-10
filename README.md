@@ -16,3 +16,8 @@ All files are to contain no spaces, just use underscores
     use 
     
       ```"my_file.txt"```
+
+## Presentation
+[Preliminary Group Presentation](https://docs.google.com/presentation/d/1fura69Lllvz_mkbHlCeZBSAx9Tm_pFQY4ch9zQ2Vc-M/edit?usp=sharing)
+
+[Final Group Presentation]
