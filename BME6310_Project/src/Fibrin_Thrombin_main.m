@@ -5,7 +5,7 @@
 %    [TF*			Xa			IXa			XIa		
 %		Fibrin		ES			yS			IIa]
 c0 = [1*10^-6		0.17*10^-6	0.09*10^-6	.031*10^-6 ...
-		0*10^-6		0*10^-6		0*10^-6		1.4*10^-6];
+		18*10^-6		0*10^-6		0.09*10^-6		1.4*10^-6];
 
 tspan = 0:1:850;
 
@@ -14,17 +14,17 @@ p.k_i_TF = log(2) / 180;
 p.k_i = log(2) / 60;
 p.k_elute = log(2) / 2;
 p.n = [1 1 1 0.18 0.05 0.36 1];
-p.a = [0.48 0.32 5.53 24.7 58.8 4.98*10^-5 0.065];
+    p.a = [0.48 0.32 5.53 24.7 58.8 4.98*10^-5 0.065];
 p.E_O_total = 1.6; p.Ek_f = 280; p.Ek_r = 280;
 p.y_O_total = 0.3; p.yk_f = 10; p.yk_r = 10;
 
 % Parameters - Extrinsic & Intrisic (XIa=0, a(6)=a(7)=0)
 pEI = p;
-pEI.a = [0.48 0.32 5.53 24.7 58.8 0 0];
+    pEI.a = [0.48 0.32 5.53 24.7 58.8 0 0];
 
 % Parameters - Extrinsic Only (XIa=IXa=0, a(2)=0)
 pE = p;
-pE.a = [0.48 0 0 24.7 58.8 4.98*10^-5 0.065];
+    pE.a = [0.48 0 0 24.7 58.8 4.98*10^-5 0.065];
 
 % ODE15s it
 [t,c] = ode15s(@Fibrin_Thrombin_ode,tspan,c0,[],p);
@@ -35,9 +35,9 @@ pE.a = [0.48 0 0 24.7 58.8 4.98*10^-5 0.065];
 figure('Renderer', 'painters', 'Position', [10 10 1200 900])
 
 % Intrinsic Tenase
-subplot(221); plot(t,c(:,3)*10^6,'b-',...
-	t,(c(:,3)-cEI(:,3))*10^6,'r-',...
-	t,cEI(:,3)*10^6,'y-',...
+subplot(221); plot(t,(c(:,3)+c(:,4))*10^6,'b-',...
+	t,(c(:,3)+c(:,4)-cEI(:,3)-cEI(:,4))*10^6,'r-',...
+	t,(cEI(:,3)+cEI(:,4))*10^6,'y-',...
 	t,c(:,4)*10^6,'m--','LineWidth', 2); 
 xlabel('time(sec)'); ylabel ('IXa or XIa [pM]');
 title('Intrinsic tenase'); axis([0 1000 0 30]);
