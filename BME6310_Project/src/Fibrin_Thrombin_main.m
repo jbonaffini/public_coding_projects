@@ -5,7 +5,7 @@
 %    [TF*			Xa			IXa			XIa		
 %		Fibrin			ES			yS			IIa]
 c0 = [1*10^-6		0.17*10^-6	0.09*10^-6	.031*10^-6 ...
-    18*10^-6		0*10^-6		0.09*10^-6		1.4*10^-6];
+    18*10^-6		0*10^-6		0.0*10^-6		1.4*10^-6];
 
 tspan = 0:1:850;
 
@@ -65,7 +65,7 @@ legend('boxoff')
 
 % Thrombin
 subplot(223); plot(t,c(:,6)+c(:,7),'-',...
-	t,c(:,6)+c(:,7)-cEI(:,6)+cEI(:,7),'-',...
+	t,c(:,6)+c(:,7)-cEI(:,6)-cEI(:,7),'-',...
 	t,cEI(:,6)+cEI(:,7),'-',...
 	t,(cE(:,6)+cE(:,7))*1000,'-','LineWidth', 2); 
 xticks([0:200:1000])
@@ -95,7 +95,6 @@ legend('boxoff')
 
 % figure; plot(t,c(:,6),t,c(:,7), t,c(:,8)*10);
 % legend('Weak Bonding', 'Strong Bonding', 'IIa');
-
 %%
 mse_spline (tspan, c(:,3));
 function [] = mse_spline  (origx, origy)
