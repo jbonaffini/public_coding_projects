@@ -95,3 +95,48 @@ legend('boxoff')
 
 % figure; plot(t,c(:,6),t,c(:,7), t,c(:,8)*10);
 % legend('Weak Bonding', 'Strong Bonding', 'IIa');
+
+%%
+mse_spline (tspan, c(:,3));
+function [] = mse_spline  (origx, origy)
+	
+	test = 50:50:400;
+	mse = zeros(1,length(test));
+	
+	for i = 1 : length(mse)
+		mse(i) = ds_spline (origx, origy, test(i));
+	end
+	
+	figure;
+	plot(test,mse)
+end
+
+
+function [mse] = ds_spline (origx, origy, ds)
+	dsx = downsample(origx,ds);
+	dsy = downsample(origy,ds);
+	
+	pts = round(length(origx) / ds);
+	idx = round(linspace(1,length(origx), pts));
+	dsx=[]; dsy=[];
+	for i = 1 : length(idx)
+		dsx = [dsx origx(idx(i))];
+		dsy = [dsy origy(idx(i))];
+	end
+	
+	pp = spline(dsx, dsy, origx);
+	
+	mse = mean( ((pp - origy')./pp).^ 2);
+	
+	figure;
+	plot(origx,origy,'-',...
+	dsx,dsy,'-',...
+	origx,pp,'k-',...
+	'LineWidth', 2); 
+	xlabel('x'); ylabel ('y');
+	title('');
+	legend('Original', 'Downsampled',...
+	['Spline Interp: ',num2str(ds)],...
+		'FontSize',8,'Location','best');
+	legend('boxoff')
+end
