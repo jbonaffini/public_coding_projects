@@ -3,9 +3,9 @@
 
 % Starting values
 %    [TF*			Xa			IXa			XIa		
-%		Fibrin		ES			yS			IIa]
+%		Fibrin			ES			yS			IIa]
 c0 = [1*10^-6		0.17*10^-6	0.09*10^-6	.031*10^-6 ...
-        18*10^-6		0*10^-6		0.09*10^-6		1.4*10^-6];
+    18*10^-6		0*10^-6		0.09*10^-6		1.4*10^-6];
 
 tspan = 0:1:850;
 
@@ -16,13 +16,13 @@ p.k_elute = log(2) / 2;
 p.n = [1 1 1 0.18 0.05 0.36 1];
 p.a = [0.48 0.32 5.53 24.7 58.8 4.98*10^-5 0.065];
 p.E_O_total = 1.6; p.Ek_f = 100; p.Ek_r = 280;
-p.y_O_total = 0.3; p.yk_f = 100; p.yk_r = 10;
+p.y_O_total = 0.3; p.yk_f = 100; p.yk_r = 15;
 
 % Parameters - Extrinsic & Intrisic (XIa=0, a(6)=a(7)=0)
 pEI = p;
 pEI.a = [0.48 0.32 5.53 24.7 58.8 0 0];
 
-% Parameters - Extrinsic Only (XIa=IXa=0, a(2)=0)
+% Parameters - Extrinsic Only (XIa=IXa=0, a(2)=a(3)=0)
 pE = p;
 pE.a = [0.48 0 0 24.7 58.8 4.98*10^-5 0.065];
 
