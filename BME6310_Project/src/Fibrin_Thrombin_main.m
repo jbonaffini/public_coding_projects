@@ -97,6 +97,11 @@ legend('boxoff')
 % figure; plot(t,c(:,6),t,c(:,7), t,c(:,8)*10);
 % legend('Weak Bonding', 'Strong Bonding', 'IIa');
 %%
+%%This is a function to recapitulate the graph using spline interpolation
+%%it downsamples the data for a total of 7 times to see how many data
+%%points are required to accurately estimate graph
+
+
 mse_spline (tspan, c(:,3));
 function [] = mse_spline  (origx, origy)
 	
