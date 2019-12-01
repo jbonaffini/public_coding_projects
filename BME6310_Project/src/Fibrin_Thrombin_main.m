@@ -105,7 +105,7 @@ legend('boxoff')
 mse_spline (tspan, c(:,3));
 function [] = mse_spline  (origx, origy)
 	
-	test = 50:50:400;
+	test = 2:1:10;
 	mse = zeros(1,length(test));
 	
 	for i = 1 : length(mse)
@@ -117,11 +117,12 @@ function [] = mse_spline  (origx, origy)
 end
 
 
-function [mse] = ds_spline (origx, origy, ds)
-	dsx = downsample(origx,ds);
-	dsy = downsample(origy,ds);
+function [mse] = ds_spline (origx, origy, pts)
+	%dsx = downsample(origx,ds);
+	%dsy = downsample(origy,ds);
 	
-	pts = round(length(origx) / ds);
+	%pts = round(length(origx) / ds);
+
 	idx = round(linspace(1,length(origx), pts));
 	dsx=[]; dsy=[];
 	for i = 1 : length(idx)
@@ -141,7 +142,7 @@ function [mse] = ds_spline (origx, origy, ds)
 	xlabel('x'); ylabel ('y');
 	title('');
 	legend('Original', 'Downsampled',...
-	['Spline Interp: ',num2str(ds)],...
+	['Spline Interp: ',num2str(pts)],...
 		'FontSize',8,'Location','best');
 	legend('boxoff')
 end
