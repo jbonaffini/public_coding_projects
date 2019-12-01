@@ -14,7 +14,9 @@ p.k_i_TF = log(2) / 180;
 p.k_i = log(2) / 60;
 p.k_elute = log(2) / 2;
 p.n = [1 1 1 0.18 0.05 0.36 1];
-
+% p.a. changed to represent severe hemophilia . a(2)=a(3)=0 
+% no intrinsic tenase. All prothrobinase is the result of 
+%extrinsic tenase
     p.a = [0.48 0 0 24.7 58.8 4.98*10^-5 0.065];
     
     
