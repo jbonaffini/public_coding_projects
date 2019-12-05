@@ -36,18 +36,18 @@ All variables are to be lowercase, separated by underscores (not camel case) or 
 
   -  For example: instead of 
   
-     ```"my var" or "myVar```
+      ```"my var" or "myVar```
       
-    use 
+     use 
     
-     ```"my_var"```
+      ```"my_var"```
       
  All variables are to be descriptive
 
   -  For example: instead of 
   
-     ```"model"```
+      ```"model"```
       
-    use 
+     use 
     
-     ```"linear_reg_model"```
+      ```"linear_reg_model"```
