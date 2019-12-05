@@ -1,0 +1,110 @@
+Specialty,Surgery,Internal.Med
+Dentist,0,0
+General Surgery,1,0
+General Practice,0,0
+Internal Medicine,0,1
+Hematology/Oncology,0,1
+Family Practice,0,0
+Nurse Practitioner,0,0
+Optometry,0,0
+Cardiology,0,1
+Obstetrics/Gynecology,0,0
+Podiatry,0,0
+Physician Assistant,0,0
+Diagnostic Radiology,0,0
+Student in an Organized Health Care Education/Training Program,0,0
+Neurology,0,0
+Certified Nurse Midwife,0,0
+Rheumatology,0,1
+Pharmacist,0,0
+Urology,0,0
+Cardiac Electrophysiology,0,1
+Dermatology,0,0
+Emergency Medicine,0,0
+Psychiatry & Neurology,0,0
+Infectious Disease,0,1
+Psychiatry,0,0
+Gastroenterology,0,1
+Ophthalmology,0,0
+Thoracic Surgery,1,0
+Oral Surgery (dentists only),1,0
+Anesthesiology,0,0
+Orthopedic Surgery,1,0
+Otolaryngology,0,0
+Pulmonary Disease,0,1
+Neuropsychiatry,0,0
+Physical Therapist,0,0
+Pediatric Medicine,0,0
+Physical Medicine and Rehabilitation,0,0
+Nephrology,0,1
+Maxillofacial Surgery,0,0
+Certified Clinical Nurse Specialist,0,0
+Preventive Medicine,0,0
+Allergy/Immunology,0,0
+Hand Surgery,1,0
+Hospice and Palliative Care,0,0
+Medical Oncology,0,1
+Plastic and Reconstructive Surgery,1,0
+Colon & Rectal Surgery,1,0
+Hospitalist,0,0
+Colorectal Surgery (formerly proctology),1,0
+Specialist,0,0
+Geriatric Medicine,0,1
+Gynecological/Oncology,0,1
+Neurosurgery,0,0
+Clinic/Center,0,0
+Interventional Pain Management,0,0
+Orthopaedic Surgery,1,0
+Psychologist,0,0
+Radiation Oncology,0,0
+Endocrinology,0,1
+Critical Care (Intensivists),0,0
+Vascular Surgery,1,0
+Family Medicine,0,0
+Registered Nurse,0,0
+Pain Management,0,0
+Sports Medicine,0,1
+Unknown Physician Specialty Code,0,0
+Osteopathic Manipulative Medicine,0,0
+Interventional Radiology,1,0
+Naturopath,0,0
+Pathology,0,0
+Hematology,0,1
+Preferred Provider Organization,0,0
+Cardiac Surgery,1,0
+Geriatric Psychiatry,0,0
+"Medical Genetics, Ph.D. Medical Genetics",0,0
+Surgical Oncology,1,0
+Surgery,1,0
+Psychologist (billing independently),0,0
+Legal Medicine,0,0
+"Neuromusculoskeletal Medicine, Sports Medicine",0,1
+Health Maintenance Organization,0,0
+Neurological Surgery,1,0
+Plastic Surgery,1,0
+Homeopath,0,0
+Licensed Practical Nurse,0,0
+CRNA,0,0
+Addiction Medicine,0,0
+Specialist/Technologist,0,0
+Nuclear Medicine,0,0
+Unknown Supplier/Provider,0,0
+Personal Emergency Response Attendant,0,0
+Medical Genetics,0,0
+Oral & Maxillofacial Surgery,1,0
+Clinical Pharmacology,0,0
+Sleep Medicine,0,0
+Counselor,0,0
+Slide Preparation Facility,0,0
+Rehabilitation Agency,0,0
+Military Health Care Provider,0,0
+General Acute Care Hospital,0,0
+Multispecialty Clinic/Group Practice,0,0
+Thoracic Surgery (Cardiothoracic Vascular Surgery),1,0
+Midwife,0,0
+Chiropractic,0,0
+Licensed Clinical Social Worker,0,0
+Community Health Worker,0,0
+Hospital (Dmercs Only),0,0
+Pharmacy Technician,0,0
+Behavioral Analyst,0,0
