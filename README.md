@@ -40,7 +40,7 @@ All variables are to be lowercase, separated by underscores (not camel case) or 
       
     use 
     
-      ```"my_var"```
+     ```"my_var"```
       
  All variables are to be descriptive
 
@@ -50,4 +50,4 @@ All variables are to be lowercase, separated by underscores (not camel case) or 
       
     use 
     
-      ```"linear_reg_model"```
+     ```"linear_reg_model"```
