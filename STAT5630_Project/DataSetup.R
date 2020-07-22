@@ -3,16 +3,19 @@
 # Data Setup
 
 # Packages
-# install.packages("hashmap")
+# install.packages("hashr")
 # install.packages("plotly")
 # install.packages("plyr")
 # install.packages("mltools")
+# install.packages("caret")
 
 # Libraries
-library(hashmap)
+library(hashr)
+library(hash)
 library(plyr)
 library(data.table)
 library(mltools)
+library(caret)
 
 # import data from file
 setwd("c:/Users/james/Data/UVA_ME/UVA_FALL_2019/STAT5630_StatisticalML/Project/")
@@ -46,8 +49,31 @@ for (c in 1 : length(classunique)) {
 info.all = cbind(info,data.frame(t(as.matrix(classmask) %*% as.matrix(t(info[,6:255])))))
 
 # Clean up credentials - add in rows 
+# there are some rows that don't have any value, so clean that up
+for (k in 1:nrow(info.all)) {
+  if (info.all$Credentials[k] == "") {
+    if (info.all$Specialty[k] == "Nurse Practitioner") {
+      info.all$Credentials[k] = "NP" 
+    } else if (info.all$Specialty[k] == "Registered Nurse") {
+      info.all$Credentials[k] = "RN" 
+    } else if (info.all$Specialty[k] == "Certified Clinical Nurse Specialist") {
+      info.all$Credentials[k] = "CNS" 
+    } else if (info.all$Specialty[k] == "Pharmacist" || info.all$Specialty[k] == "Pharmacy Technician") {
+      info.all$Credentials[k] = "PHARM D." 
+    } else if (info.all$Specialty[k] == "Student in an Organized Health Care Education/Training Program" || info.all$Specialty[k] == "Specialist/Technologist") {
+      info.all$Credentials[k] = "MS" 
+    } else if (info.all$Specialty[k] == "Physician Assistant") {
+      info.all$Credentials[k] = "PA"
+    } else {
+      info.all$Credentials[k] = "MD"
+    }
+    
+  }
+}
+
+# separate by credentials
 credunique=unique(cred$type)
-credh = hashmap(cred$credential,cred$type)
+credh = hash(cred$credential,cred$type)
 credmat = as.data.frame(matrix(0,ncol=length(levels(credunique)),nrow=nrow(info.all)))
 colnames(credmat) = levels(credunique)
 for (k in 1:nrow(info.all)) {
@@ -61,7 +87,7 @@ specmat = as.data.frame(matrix(0,ncol=ncol(spec)-1,nrow=nrow(info.all)))
 colnames(specmat) = colnames(spec)[2:ncol(spec)]
 
 for (i in 1:(ncol(spec)-1)) {
-  spech = hashmap(spec$Specialty,spec[,i+1])
+  spech = hash(spec$Specialty,spec[,i+1])
   for (k in 1:nrow(info.all)) {
     specmat[k,i]=spech[[info.all$Specialty[k]]]
   }
@@ -82,7 +108,14 @@ info.all$deathper100k = round(as.numeric(gsub(",","",info.all$Deaths,fixed=TRUE)
 
 # Convert M to 1 and F to 2
 gender = one_hot(as.data.table(info.all$Gender))
+# gender2 = factor(gender, levels=c("M","F"))
+# factor(unlist(gender), levels=c("M","F"))
+# colnames(gender)=c("Gender.F","Gender.M")
+
+dmy <- dummyVars(" ~ .", data = gender)
+gender = data.frame(predict(dmy, newdata = gender))
 colnames(gender)=c("Gender.F","Gender.M")
+
 info.all = cbind(info.all[,1:2],gender,info.all[,4:length(info.all)])
 
 info.all.back = info.all
