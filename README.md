@@ -1,4 +1,4 @@
-# UVA_ME_shared
+# My Public Coding Projects
 UVA ME program shared code and projects
 
 ## Contents
