@@ -1,0 +1,856 @@
+---
+title: "Final Project: Dialysis Facility Comparison"
+author: "James Bonaffini"
+date: "12/11/2020"
+output: pdf_document
+---
+
+```{r "setup", include=FALSE}
+#This block of code will not appear in your knitted document
+#Setup paths for data and Rcode
+require("knitr")
+sourcedir <- "c:/Users/james/Data/UVA_ME_shared/SYS6021_Project/Source"
+datadir <- "c:/Users/james/Data/UVA_ME_shared/SYS6021_Project/Data/Dialysis"
+
+opts_knit$set(root.dir = sourcedir)
+opts_chunk$set(warning=FALSE)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE) #Make it wrap text nicely
+
+library(lattice)
+library(MASS)
+library(lindia)
+library(ggplot2)
+library(ggpubr)
+library(GGally)
+library(plotly)
+library(boot)
+library(ggfortify)
+library(car)
+library(gridExtra)
+library("factoextra")
+library(data.table)
+
+setwd(sourcedir)
+
+# Function to input files into a list - Credit to SYS 6021 Instructors
+file.inputl <- function(my.path)
+{
+  my.dir <- getwd()
+  setwd(my.path)
+  my.files <- list.files(pattern=".csv")
+  acts <- lapply(my.files,read.csv)
+  setwd(my.dir)
+  return(acts)
+}
+
+```
+# Dialysis in the United States: Primary Indicators for Quality Care
+
+# Introduction  
+As a graduate student at the University of Virginia, Department of Biomedical Engineering, my Master's project concerned Renal Care that patients experience in the UVA Hospital.  As one part of my experience, I learned all about End Stage Renal Disease (ESRD), in which Renal Failure has occurred and Renal Replacement Therapy in the form of Hemodialysis (HD) or Peritoneal Dialysis (PD) is necessary.  I was surprised to learn that the United States Government pays for all ESRD costs, reimbursing non-profit and for-profit clinics all around the country.  Reimbursement rates are on a capitated basis (per-patient), in which a lump sum is paid for ESRD care every month.  These capitated rates are then adjusted based upon facility quality metrics such as mortality, hospitalization, transfusion, infection, and therapy adequacy.  Facilities are also given "star" ratings to inform patients about the best performing clinics in this competitive business of kidney care. The Centers for Medicare and Medicaid Services, which pays for all of this care as a part of social security, gathers this data and makes it available on their site for public disclosure.  I wanted to probe this data to see what I could find out about the quality metrics and find whether I could predict them based upon some of the other parameters that were provided.
+
+# Data Setup  
+
+I started by sourcing files & loading and cleaning the dialysis facility and adequacy data sets as well as some population and unemployment data.  The dialysis data sets are from Centers for Medicare and Medicaid Services (CMS).
+  
+I've removed most of the code snippets for reading ease.  Please look at my Rmd file if you would like to evaluate the code.
+  
+First I loaded the datasets in the folder  
+
+### ESRD QIP - Dialysis Adequacy - Payment Year 2020  
+https://data.cms.gov/provider-data/dataset/ip8v-3vdj  
+From Site: "This dataset includes facility details, performance rate, Kt/V Dialysis Adequacy Comprehensive measure score, and the state and national average measure scores for the Kt/V Dialysis Adequacy Comprehensive measure for the PY 2020 ESRD QIP."  It has data available from over 7000 facilities.
+
+### Dialysis Facility - Listing by Facility  
+https://data.cms.gov/provider-data/dataset/23ew-n7w9  
+From Site: "A list of all dialysis facilities registered with Medicare that includes addresses and phone numbers, as well as services and quality of care provided."
+
+### US Population Density and unemployment rate by Zip Code  
+https://blog.splitwise.com/2014/01/06/free-us-population-density-and-unemployment-rate-by-zip-code/  
+This is data gathered from the 10-year US Census (population density) from 2010 and the ACS or American Community Survey (unemployment rate) from 2007-2011.
+
+
+```{r, echo=FALSE}
+#load data
+all_data <- file.inputl(datadir)
+adequacy <- all_data[[1]]
+facility <- all_data[[2]]
+unemp <- all_data[[3]]
+zippop <- all_data[[4]]
+```
+
+## Data Cleaning - Adequacy  
+Remove all of the records that don't have adequacy values  
+Rename the CMS Certification number to CCN  
+Otherwise keep:  
+
+-   Achievement Measurement Rate - "Percentage of all patient months for patients whose delivered dose of dialysis (either hemodialysis or peritoneal dialysis) met the specified threshold"  
+-   KtV Comprehensive Measurement Score - this is based upon the measurement rate, scored 1-10 and if it's below a certain threshold, then dialysis facilities may lose money  
+-   Removed most of the location data because that stuff is in the facility data set
+```{r, echo=FALSE}
+# Cleanup adequacy - take out no score values, remove some unnecessary cols, rename
+adequacy<-adequacy[!(adequacy$Kt.V.Comprehensive.Reason.for.No.Score..See.Footnotes.File. != "-"),]
+names(adequacy)[names(adequacy) == "CMS.Certification.Number..CCN."] <- "CCN"
+adequacy<-adequacy[,-c(3:9)]
+adequacy<-adequacy[,-c(5:7)]
+adequacy<-adequacy[,-1]
+adequacy$Achievement.Measure.Rate <- unlist(data.frame(sapply(
+  adequacy$Achievement.Measure.Rate, function(x) as.numeric(gsub("%", "", x)))))
+adequacy$Kt.V.Comprehensive.Measure.Score <- 
+  as.numeric(adequacy$Kt.V.Comprehensive.Measure.Score)
+names(adequacy)[names(adequacy) == "Achievement.Measure.Rate"] <- "KtV.Adequacy.Rate"
+names(adequacy)[names(adequacy) == "Kt.V.Comprehensive.Measure.Score"] <- "KtV.Adequacy.Score"
+
+```
+
+## Data Cleaning - Facility
+This data set is very large (118 parameters) so we will pick and choose some observations that we will use in our processing. We'll pull it into the data.fac dataset
+
+### Facility Basics  
+-  Provider.Number is the same thing as CCN - change it to that so that we can merge later
+-  Network - US split into networks
+-  State
+-  Star Rating - out of 5
+-  Profit or non profit (True or False binarized to 1, 0)
+-  Chain-owned or not chain-owned (True or False binarized to 1, 0)
+  
+### Services Offered  
+-  Number of Dialysis Stations
+-  Offers in center HD (True or False binarized to 1, 0)
+-  Offers peritoneal dialysis (True or False binarized to 1, 0)
+-  Offers home HD training (True or False binarized to 1, 0)
+-  Percent HD KtV>1.2 - Clearance for HD over the bare minimum (but usually not sufficient)
+-  Percent PD KtV>1.7 - Clearance for PD that is satisfactory (usually sufficient)
+-  HD Patients KtV data - Number of HD patients with KtV (clearance) data
+-  HD Patient Months KtV data - Number of HD patient months with KtV (clearance) data
+-  PD Patients KtV data - Number of PD patients with KtV (clearance) data
+-  PD Patient Months KtV data - Number of HD patients with KtV (clearance) data
+  
+### Mortality & Survival  
+-  Mortality Rate - rate per 100 patient-years
+-  Patient.Survival.Category.Text - worse, as, or better than expected, converted to -1, 0, 1
+  
+### Hospitalization & Readmission  
+-  Hospitalization Rate - Rate per 100 patient years
+-  Hospital Readmission Rate - as a percent of hospital discharges
+-  Patient.Hospital.Readmission.Category - worse, as, or better than expected, converted to -1, 0, 1
+  
+### Infection  
+-  Standardized Infection Ratio
+-  Patient Infection Category - worse, as, or better than expected, converted to -1, 0, 1
+  
+### Transfusion  
+-  Transfusion Rate - rate per 100 patient years
+-  Transfusion Category - worse, as, or better than expected, converted to -1, 0, 1
+  
+### Vascular Access  
+-  Fistula rate - as a percent of patient months
+-  Fistula Category - worse, as, or better than expected, converted to -1, 0, 1
+  
+### Transplant  
+-  PPPW - Percent of prevalent patients waitlisted (on the transplant waitlist)  
+
+General cleanup beyond this involved removing the observations with "Not Available" or " " in the "Category" parameters and observations with at least 4 NA values.
+
+```{r, echo=FALSE}
+# Cleanup Facility
+#names(facility)[names(facility) == "Provider.Number"] <- "CCN"
+
+data.fac <- data.frame(CCN = facility$Provider.Number)
+data.fac$Network      <- facility$Network
+data.fac$addr         <- paste(facility$Address.Line.1," ", facility$City,", ", facility$State, sep="")
+data.fac$State        <- facility$State
+data.fac$Zip          <- facility$Zip
+data.fac$Star         <- facility$Five.Star
+data.fac$Profit       <- (facility$Profit.or.Non.Profit == "Profit") * 1
+data.fac$Chain        <- (facility$Chain.Owned == "Yes") * 1
+
+data.fac$Stations     <- facility$X..of.Dialysis.Stations
+data.fac$OfferHD      <- (facility$Offers.in.center.hemodialysis == 1) * 1
+data.fac$OfferPD      <- (facility$Offers.peritoneal.dialysis == 1) * 1
+data.fac$offerHHD     <- (facility$Offers.home.hemodialysis.training == 1) * 1
+data.fac$PercHDKtV1.2 <- facility$Percent.of.Adult.HD.patients.with.Kt.V....1.2
+data.fac$PercPDKtV1.7 <- facility$Percentage.of.Adult.PD.PTS.with.Kt.V....1.7
+data.fac$HDPatientsKtV<- facility$Number.of.adult.HD.patients.with.KT.V.data
+data.fac$HDMonthsKtV  <- facility$Number.of.adult.HD.patient.months.with.Kt.V.data
+data.fac$PDPatientsKtV<- facility$Number.of.adult.PD.patients.with.KT.V.data
+data.fac$PDMonthsKtV  <- facility$Number.of.adult.PD.patient.months.with.Kt.V.data
+
+data.fac$Mortality    <- facility$Mortality.Rate..Facility.
+data.fac$PatSurvCat   <- facility$Patient.Survival.Category.Text
+
+data.fac$Hospitalization <- facility$Hospitalization.Rate..Facility.
+data.fac$ReadRate     <- facility$Readmission.Rate..Facility.
+data.fac$HospitalAdCat<- facility$Patient.Hospital.Readmission.Category
+
+data.fac$Infection    <- facility$Standard.Infection.Ratio
+data.fac$InfectCat    <- facility$Patient.Infection.category.text
+
+data.fac$Transfusion  <- facility$Transfusion.Rate..Facility.
+data.fac$TransCat     <- facility$Patient.Transfusion.category.text
+
+data.fac$Fistula      <- facility$Fistula.Rate..Facility.
+data.fac$FistulaCat   <- facility$Fistula.Category.Text
+
+data.fac$PPPW         <- facility$Percentage.of.Prevalent.Patients.Waitlisted
+
+#data.fac.back <- data.fac
+#data.fac<-data.fac.back
+#data.fac<-data.fac[!(data.fac$Star == "-"),]
+
+# Removing the facility rows with data that aren't available
+
+data.fac<-data.fac[!(data.fac$PatSurvCat == " " | data.fac$PatSurvCat == "Not Available"),]
+data.fac$PatSurvCat = as.numeric(factor(data.fac$PatSurvCat,
+  levels=c("Worse than Expected","As Expected","Better than Expected")))-2
+
+data.fac<-data.fac[!(data.fac$HospitalAdCat == " " | data.fac$HospitalAdCat == "Not Available"),]
+data.fac$HospitalAdCat = as.numeric(factor(data.fac$HospitalAdCat,
+  levels=c("Worse than Expected","As Expected","Better than Expected")))-2
+
+data.fac<-data.fac[!(data.fac$InfectCat == " " | data.fac$InfectCat == "Not Available"),]
+data.fac$InfectCat = as.numeric(factor(data.fac$InfectCat,
+  levels=c("Worse than Expected","As Expected","Better than Expected")))-2
+
+data.fac<-data.fac[!(data.fac$TransCat == " " | data.fac$TransCat == "Not Available"),]
+data.fac$TransCat = as.numeric(factor(data.fac$TransCat,
+  levels=c("Worse than Expected","As Expected","Better than Expected")))-2
+
+data.fac<-data.fac[!(data.fac$FistulaCat == " " | data.fac$FistulaCat == "Not Available"),]
+data.fac$FistulaCat = as.numeric(factor(data.fac$FistulaCat,
+  levels=c("Worse than Expected","As Expected","Better than Expected")))-2
+
+# Removing rows with more than 3 NA values (sometimes there isn't PD data if the facility doesn't offer it)
+data.fac <- data.fac[rowSums(is.na(data.fac))<(length(data.fac)-3),]
+
+```
+
+## Data Cleaning - Zip Population Density and Unemployment Rate  
+Remove the columns that we don't need and do not have population density values.  
+
+### Demographic/Location Specifics  
+-  Zip.ZCTA - this is how we're going to merge with the dialysis dataset
+-  Den.pop - population density per square mile
+-  Unemp - unemployment rate
+
+```{r, echo=FALSE}
+# We only want the zip.zcta and the 
+zippop <- zippop[,-c(2:3)]
+names(zippop)[names(zippop) == "Density.Per.Sq.Mile"] <- "Den.Pop"
+zippop<-zippop[!(zippop$Den.Pop == 0),]
+
+unemp <- unemp[,-c(3)]
+zippop <- merge(zippop, unemp, by.x="Zip.ZCTA", by.y="Zip")
+names(zippop)[names(zippop) == "Unemp..Rate"] <- "Unemp"
+
+```
+
+## Merge the data sets  
+I merge the dialysis data based upon the CCN -- The CMS Certification Number
+Then I merge the location data based upon the Zip code, matching the dialysis location zip to the zip.zcta code in my population density dataset.  Finally I remove all of the rows that don't have population data - these were all in Puerto Rico and the US Virgin Islands.  
+
+```{r}
+data.dia <- merge(data.fac, adequacy, by.x="CCN")
+data.dia <- merge(data.dia, zippop, by.x="Zip", by.y="Zip.ZCTA")
+```
+
+## Data Exploration
+
+Now to do some data visualization.  
+First I'm going to look at the primary quality measurements used by CMS: Mortality Rate, Hospitalization Rate, Infection Rate, Transfusion Rate, and KtV Adequacy Rate  
+The first 3 of these values are rates per 100 patient years.   CMS uses these quality metrics to reward facilities that have better performance and ensure patients are receiving good quality care.
+
+First Mortality Rate:  
+```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+p1 <- ggplot(as.data.frame(data.dia$Mortality), aes(x=data.dia$Mortality)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Mortality Rate Hist") + labs(x = "Mortality Rate (per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(as.data.frame(data.dia$Mortality), aes(sample=data.dia$Mortality)) + stat_qq() + stat_qq_line() + ggtitle("Mortality Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
+ggarrange(p1,p2)
+```
+We see approximately a normal distribution with the tails, especially the upper tail trailing off the distribution.  The center lies around 20, which is approximately correct -- generally patients on dialysis have a 4-5 year lifespan.  
+
+The next primary measure is Hospitalization Rate. This is a damaging and expensive facet of End Stage Renal Disease (ESRD) Care.  Due to the malfunctioning of the kidney and the general poor health status of ESRD patients, patients are more at risk for hospitalization due to brittle bones, heart failure, infection, and a host of other issues.  
+```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+p1 <- ggplot(as.data.frame(data.dia$Hospitalization), aes(x=data.dia$Hospitalization)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Hospitalization Rate Hist") + labs(x = "Hospitalization Rate (per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(as.data.frame(data.dia$Hospitalization), aes(sample=data.dia$Hospitalization)) + stat_qq() + stat_qq_line() + ggtitle("Hospitalization Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
+ggarrange(p1,p2)
+
+```
+As you can see patient hospitalization is frequent, with the center of the distribution nearly 200 per 100 patient years.  Again, the distribution is nearly normal, but the lower tail is above the expected value instead of below, pointing to a steeper cutoff on the lower end of the distribution
+
+Infection Rate is a good measurement of quality of dialysis care because the access for either hemodialyis patients (vascular access through a fistula in the arm, or a CVC in the chest) or peritoneal dialysis patients (abdominal access via a peritoneal catheter) can become infected. This can result in disaster and may point to lack of education in how to properly care for the dialysis access or technique failure on the part of the clinician performing the procedure.  
+```{r,echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+p1 <- ggplot(as.data.frame(data.dia$Infection), aes(x=data.dia$Infection)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Infection Rate Hist") + labs(x = "Infection Rate (per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(as.data.frame(data.dia$Infection), aes(sample=data.dia$Infection)) + stat_qq() + stat_qq_line() + ggtitle("Infection Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
+ggarrange(p1,p2)
+```
+```{r,echo=FALSE, fig.height = 3, fig.width = 6,fig.align="center"}
+qqPlot(data.dia$Infection, distribution = "pois", lambda = mean(data.dia$Infection), main="Infection Rate vs Poisson Dist",id=FALSE)
+```
+Infection rate is not normally distributed -- it would probably be closer to a poisson distribution, with the clear cutoff at 0, steep spike, and long trailing tail.  I plotted it against a prospective poisson distribution and it was a much closer match.  
+  
+Transfusion rate is more a measurement of patient pharma care -- dialysis patients often must receive the drug epogen, which performs the same task as erythropoietin, a hormone that is produced by the kidneys to stimulate red blood cell (RBC) production.  Patients must recieve a transfusion when RBC counts are low; this points to a mismanagement of the patients' medication.  Therefore, transfusion rate is a good metric to measure dialysis care being received by patients.  
+```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+p1 <- ggplot(as.data.frame(data.dia$Transfusion), aes(x=data.dia$Transfusion)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Transfusion Rate Hist") + labs(x = "Transfusion Rate (per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(as.data.frame(data.dia$Transfusion), aes(sample=data.dia$Transfusion)) + stat_qq() + stat_qq_line() + ggtitle("Transfusion Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
+ggarrange(p1,p2)
+```
+
+```{r,echo=FALSE, fig.height = 3, fig.width = 6,fig.align="center"}
+qqPlot(data.dia$Transfusion, distribution = "pois", lambda = mean(data.dia$Transfusion), main="Transfusion Rate vs Poisson Dist",id=FALSE)
+```
+Transfusion rate has a similar distribution as infection rate, where there is a cutoff at 0; however, the spike is further from 0.  I also plotted this transfusion data against a poisson distribution -- the upper tail was a bit too high in value for this ditribution, but it still is a closer match than a normal distribution.  
+  
+  
+The KtV (also called Clearance) Adequacy Rate is the percent of patients that recieve "adequate" dialysis.  There are different measures of this depending upon the modality, but it all boils down to the supposed amount of blood filtered:  
+Kt/V is an equation that produces a unitless result where  
+K = Rate of Filtering Measured in Volume/length of time  
+t = length of time  
+V = The approximate volume of fluid in the human body, approximated by body weight and composition, usually around 40L in an adult male.  
+Therefore, a clearance of 1.2 (as shown one of our other parameter names: PercHDKtV1.2) means that approximately 1.2x of a patient's body fluid has been filtered.  This is much more straight-forward to understand in Hemodialysis, since its an active therapy wherein blood is pumped through an external filter.  So in this case, an adequate dialysis session would mean that 50L of fluid (blood) is filtered through that external filter.  
+
+```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+p1 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Rate), aes(x=data.dia$KtV.Adequacy.Rate)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("KtV Rate Hist") + labs(x = "Percent Adequacy") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Rate), aes(sample=data.dia$KtV.Adequacy.Rate)) + stat_qq() + stat_qq_line() + ggtitle("KtV  Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
+ggarrange(p1,p2)
+```
+
+```{r,echo=FALSE, fig.height = 3, fig.width = 6,fig.align="center"}
+qqPlot(data.dia$KtV.Adequacy.Rate, distribution = "pois", lambda = mean(data.dia$KtV.Adequacy.Rate), main="KtV Rate vs Poisson Dist",id=FALSE)
+```
+This data is really difficult to match to a distribution since it approaches 100.  It doesn't match the normal distribution nor the poisson distribution.  CMS decided to map this data to a value between 1 and 10 -- the KtV Adequacy Score, so I'll see if that is closer to a normal distribution.  (this was done by CMS to more easily compare facilities)  
+```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+p1 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Score), aes(x=data.dia$KtV.Adequacy.Score)) + geom_histogram(fill= "steelblue", bins = 10) + ggtitle("KtV Score Hist") + labs(x = "KtV Score") + theme(plot.title = element_text(hjust = 0.5))
+p2 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Score), aes(sample=data.dia$KtV.Adequacy.Score)) + stat_qq() + stat_qq_line() + ggtitle("KtV Score vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
+ggarrange(p1,p2)
+```
+The score is still heavily weighted toward the upper end of the rating scale (10) but it still has a little bit more contrast in the data.  
+
+For the sake of my analysis, I will narrow down to predict just Mortality Rate because it is ultimately indicative of survival, quality of care received by patients, and adequacy of the dialysis therapy.  I will continue focusing on Hospitalization as well because it is often a primary driver of mortality.
+
+One other thing I wanted to capture was the survival-rate-until-transplant, as a function of the mortality.  Right now, the average length of time to wait for a kidney is 4 years (https://transplantliving.org/kidney/the-kidney-transplant-waitlist/).  This varies drastically with age, location, compliance, personal decisions of patients, and general health.  Additionally kidney transplant matching is performed by independent Organ Procurement Organizations (OPO) which have complex algorithms to match kidneys to renal failure patients.   For the sake of simplification, I will assume 4 years is the time a patient must wait for a kidney because I could not find reputable data that was specific to states or OPO networks.  I calculated the chance of survival until transplant by calculating (1- yearly mortality)^4 and then plotted on a boxplot. I also plotted the Percent of Patients Waitlisted.
+
+```{r, echo=FALSE, fig.height = 4, fig.width = 7,fig.align="center"}
+data.dia$survival <- (1 - data.dia$Mortality / 100)^4
+
+p1 <-ggplot(as.data.frame(data.dia$survival), aes(x=data.dia$survival)) + 
+  geom_boxplot(col= "steelblue") + ggtitle("Survival after 4 years ") +
+  labs(x = "Survival (Probability)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + coord_flip()
+
+p2 <-ggplot(as.data.frame(data.dia$PPPW), aes(x=data.dia$PPPW)) + 
+  geom_boxplot(col= "steelblue") + ggtitle("Percent Patients Waitlisted") +
+  labs(x = "Percent of Patients Waitlisted (Percent)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + coord_flip()
+
+ggarrange(p1,p2,ncol=2)
+
+```
+It may surprise you that the survival is so low, but this is a very conservative estimate for a couple reasons.  First, many people choose not to be placed on the waitlist because they are of old age, have many other illnesses that make them bad candidates for invasive surgery, or simply just choose not to.  Since these patients are still reflected in the mortality we don't truly see the number of patients that die while waiting for a transplant.  Second, there is no downside to not placing oneself on the waitlist, as patients "reserve" their spot in the waitlist based upon when they started dialysis.  If they decide after a few years of dialysis that they want to be placed on the waitlist, then don't have to move to the back of the line.  In the end, renal disease must be taken seriously, as it is a debilitating and exhausting illness.  If care can be improved, as we will soon model, this can affect survival positively.  
+  
+  
+Next I'm going to look at some of the other parameters and see what I can gather from them -- I mostly selected parameters that had at least 4 or more levels, so I selected star ratings, number of dialysis stations, percent of adequate dialysis in HD and PD, hospital readmission rate, Percent of prevalent patients waitlisted, unemployment rate, population density, and the quality metrics.
+
+```{r, fig.height = 8, fig.width = 15, echo=FALSE}
+param<-c("Star", "Stations","PercHDKtV1.2","PercPDKtV1.7","ReadRate",
+         "PPPW","Unemp","Den.Pop","Infection","Transfusion", 
+         "Mortality", "Hospitalization", "KtV.Adequacy.Score")
+ggpairs(data.dia[,param],progress=FALSE)
+
+```
+This is a lot of information to process; I'll make some high level observations that will steer my further analysis and model building:  
+   - There is significant correlation between many of the parameters and the quality metrics  
+   - Higher Mortality positively correlates to number of stations, adequate PD (not a good thing), readmission rates, infection rates, and transfusion rates, and hospitalization rates  
+   - Lower Mortality positively correlates to facility star rating, adequate HD, PPPW, and population density  
+   - Higher Hospitalization positively correlates to the number of stations, readmission rates, the unemployment rate, population density, transfusion rates, and mortality rates  
+   - Lower Hospitalization positively correlates to the star rating, adequate dialysis, and PPPW  
+   - KtV Adequacy positively correlates to the star rating and the specific HD or PD adequacy and negatively correlates with the number of stations, hospitalization rates, unemployment rates, population density, and the other quality metrics  
+   
+One thing that must be considered is the bias that is a direct result of therapy choices between patients and their doctors.  For example, I saw a correlation between lower mortality and the percent of patients on the transplant waitlist -- this points to the fact that many of the sickest patients choose not to be put on the waitlist, while those that know they have a long life ahead or have less comorbidities will choose to be on the waitlist.  If I had information regarding the average age or number of comorbidities, I might be able to control for these factors, but unfortunately, it wasn't in the datasets.   
+
+The next method I utilized was PCA to further visualize the correlation between parameters.  I omitted the rows with NA values so that the PCs could be calculated  I also used the correlation matrix instead of the covariance matrix for the PCA calculation because many of the values were not of the same magnitude.
+```{r, fig.height = 12, fig.width = 12, fig.align="center", echo=FALSE}
+#colnames(data.dia)[colSums(is.na(data.dia)) > 0] # columns PercHDKtV1.2, PercPDKtV1.7, PDMonthsKtV, PPPW, and Unemp 
+
+st_data <- 6
+
+data.dia.nona <- na.omit(data.dia)
+#data.dia.pca <- princomp(data.dia.nona[,st_data:length(data.dia.nona)], cor = F)
+data.dia.pca.corr <- princomp(data.dia.nona[,st_data:length(data.dia.nona)], cor = T)
+
+#biplot(data.dia.pca, main="Biplot with Covariance Matrix")
+#biplot(data.dia.pca.corr, main="Biplot with Correlation Matrix",axis=FALSE)
+fviz_pca_biplot(data.dia.pca.corr, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
+                col.ind=data.dia.nona$Star,label="var") +
+                ggtitle("Dialysis Data BiPlot - Colored based upon Star Rating") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r, fig.height = 6, fig.width = 10, fig.align="center", echo=FALSE}
+par(mfrow=c(2,1))
+screeplot(data.dia.pca.corr, main = "Variance of each PC")
+
+# This function from SYS 6021 instructors
+cumplot <- function(pca.obj, ...)
+{
+	xc <- cumsum(pca.obj$sdev^2)/sum(pca.obj$sdev^2)
+	barplot(xc, ylim = c(0,1), main = "Proportion of Variance", ylab = "Proportion", names.arg = 1:length(pca.obj$sdev), xlab = "Components", ...)
+	xc <- as.data.frame(xc)
+	setDT(xc, keep.rownames=TRUE)[]
+	names(xc)[names(xc) == "rn"] <- "Component"
+	names(xc)[names(xc) == "xc"] <- "Proportion"
+	return(xc)
+}
+
+cumsum <- cumplot(data.dia.pca.corr, col = "blue")
+```
+
+It looks like the data is quite varied -- only ~24% of the variance in explained in the first two PCs, 50% acheived by the 7th PC, and, and 80% by the 14th.  The following are a couple more observations:  
+- Some of the less clinical-based parameters such as number of months and patients on dialysis and number of stations at the facility are orthogonal to the quality metrics.  
+- The quality metrics all point in the same direction, except for KtV Score, which is negatively correlated to these metrics (makes sense because mortality is lower for higher KtV scores)  
+
+I'm going to try this PCA one more time with some of the parameters that are orthogonal to the quality metrics removed  
+```{r, fig.height = 12, fig.width = 12, fig.align="center",echo=FALSE}
+
+data.dia.nona$HDMonthsKtV <- NULL
+data.dia.nona$PDMonthsKtV <- NULL
+data.dia.nona$HDPatientsKtV <- NULL
+data.dia.nona$PDPatientsKtV <- NULL
+data.dia.nona$OfferHHD <- NULL
+data.dia.nona$OfferHD <- NULL
+data.dia.nona$OfferPD <- NULL
+data.dia.nona$Stations <- NULL
+data.dia.pca.corr <- princomp(data.dia.nona[,st_data:length(data.dia.nona)], cor = T)
+fviz_pca_biplot(data.dia.pca.corr, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
+                col.ind=data.dia.nona$Star,label="var") +
+                ggtitle("Dialysis Data BiPlot - Colored based upon Star Rating") + theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+This offers really interesting insight into the data -- I am perplexed to see that the KtV adequacy parameters are nearly orthogonal to the quality metrics in these 2 PCs -- maybe there is more information in the other PCs.  It's also interesting that the Star rating is nearly orthogonal to the Mortality Rate.  
+Just for addtional information, Star Ratings are composed of the following metrics:  
+- mortality ratios (deaths)  
+- hospitalizations  
+- blood transfusions  
+- incidents of hypercalcemia (too much calcium in the blood)  
+- percentage of waste removed during hemodialysis in adults and children  
+- percentage of waste removed in adults during peritoneal dialysis  
+- percentage of AV fistulas  
+- percentage of catheters in use over 90 days.  
+(Information from https://www.kidney.org/The-Dialysis-Facility-Compare-Star-Program)  
+
+I also plotted some interaction plots to better understand some of the response to demographic changes of the zip codes where the facility is located.  I split percent adequacy for both HD and PD patients based upon the median of the data and then plotted mortality and hospitalization against high and low population density and unemployment rates:  
+
+```{r, fig.height = 6, fig.width = 12, fig.align="center", echo=FALSE}
+#Interaction plots for Mortality
+PercHD.factor<-data.dia$PercHDKtV1.2
+med.PercHD <- median(na.omit(data.dia$PercHDKtV1.2))
+PercHD.factor[which(data.dia$PercHDKtV1.2<med.PercHD)]<-'Low % KtV HD'
+PercHD.factor[which(data.dia$PercHDKtV1.2>=med.PercHD)]<-'High % KtV HD'
+PercHD.factor <- factor(PercHD.factor)
+
+PercPD.factor<-data.dia$PercPDKtV1.7
+med.PercPD <- median(na.omit(data.dia$PercPDKtV1.7))
+PercPD.factor[which(data.dia$PercPDKtV1.7<med.PercPD)]<-'Low % KtV HD'
+PercPD.factor[which(data.dia$PercPDKtV1.7>=med.PercPD)]<-'High % KtV HD'
+PercPD.factor <- factor(PercPD.factor)
+
+unemp.factor<-data.dia$Unemp
+med.unemp <- median(na.omit(data.dia$Unemp))
+unemp.factor[which(data.dia$Unemp<med.unemp)]<-'Low Unemp'
+unemp.factor[which(data.dia$Unemp>=med.unemp)]<-'High Unemp'
+unemp.factor <- factor(unemp.factor)
+
+pop.factor<-data.dia$Den.Pop
+med.Den.pop <- median(na.omit(data.dia$Den.Pop))
+pop.factor[which(data.dia$Den.Pop<med.Den.pop)]<-'Low Pop'
+pop.factor[which(data.dia$Den.Pop>=med.Den.pop)]<-'High Pop'
+pop.factor <- factor(pop.factor)
+
+
+par(mfrow=c(2,2), mar=c(5, 6, 4, 4) + 0.1)
+interaction.plot(unemp.factor,PercHD.factor, data.dia$Hospitalization, main ="Hospitalization Interaction: Unemployment & HD Adequacy")
+interaction.plot(unemp.factor,PercHD.factor, data.dia$Mortality, main ="Mortality Interaction: Unemployment & HD Adequacy")
+
+interaction.plot(pop.factor,PercHD.factor, data.dia$Hospitalization, main ="Hospitalization Interaction: Pop. Density & HD Adequacy")
+interaction.plot(pop.factor,PercHD.factor, data.dia$Mortality, main ="Mortality Interaction: Pop. Density & HD Adequacy")
+
+par(mfrow=c(2,2), mar=c(5, 6, 4, 4) + 0.1)
+interaction.plot(unemp.factor,PercPD.factor, data.dia$Hospitalization, main ="Hospitalization Interaction: Unemployment & PD Adequacy")
+interaction.plot(unemp.factor,PercPD.factor, data.dia$Mortality, main ="Mortality Interaction: Unemployment & PD Adequacy")
+
+interaction.plot(pop.factor,PercPD.factor, data.dia$Hospitalization, main ="Hospitalization Interaction: Pop. Density & PD Adequacy")
+interaction.plot(pop.factor,PercPD.factor, data.dia$Mortality, main ="Mortality Interaction: Pop. Density & PD Adequacy")
+
+
+par(mfrow=c(1,2), mar=c(5, 6, 4, 4) + 0.1)
+interaction.plot(unemp.factor,pop.factor, data.dia$Hospitalization, main ="Hospitalization Interaction: Unemployment & Pop. Density")
+interaction.plot(unemp.factor,pop.factor, data.dia$Mortality, main ="Mortality Interaction: Unemployment & Pop. Density")
+
+```
+I found that there wasn't much interaction between unemployment/population density and percent dialysis adequacy in Hospitalization rates.  I did observe a lower hospitalization rate in general in lower population and lower employment areas in general, which may point to a lower access to hospital facilities.  However, there was some interaction in Mortality rates, where low adequacy can result in higher mortality in low population locales.  Also, in general, there was higher mortality in higher unemployment and lower population areas.
+
+# Analysis: Model building  
+
+Now I'm going to start some model building, attempting to predict mortality rates using linear regression.   
+
+I believe that it's not useful to generate models based upon the star rating because the star rating is based upon the primary quality metrics.  Therefore, when building models, I'm going to focus on the other parameters. such as adequate PD and HD, readmission rates, number of dialysis stations, local unemployment rate, and population density, etc.
+  
+    
+When deciding about what to put in this model, I think about what may contribute to mortality.  This may mean acute events such as infection or necessary transfusion, but also chronic situations, like long term adequacy rates or local unemployment.  The clinical parameters are actionable, while the demographic parameters indicate the facilities that could be most prone to high mortality rates.   That is why I decided upon the following hypothesis:  
+Alternative Hypothesis: Dialysis adequacy rate, local unemployment, population density, hospital readmission rates, infection rates, and transfusion rates affect patient mortality at dialysis facilities.  
+Null Hypothesis: Dialysis adequacy rate, local unemployment, population density, hospital readmission rates, infection rates, and transfusion rates do not affect patient mortality at dialysis facilities.
+
+First I'll split up the data into Training and Testing sets, splitting 67/33
+
+```{r,echo=FALSE}
+diag.plot <- function(linmod)
+{
+  par(mfrow=c(2,2))
+  plot(linmod,which=1) #Residual vs. Fitted
+  plot(linmod,which=2) #QQ
+  plot(linmod,which=3) #Scale-Location
+  plot(linmod,which=4) #Cook's Distance
+}
+# Below Functions in this chunk from SYS 6021 Instructors
+test.set <- function(data, size)
+{
+	i <- sample(1:nrow(data), round(size*nrow(data)))
+	j <- setdiff(1:nrow(data), i)
+	list(test =data[i,], train = data[j,])
+	}
+
+
+mse <- function(p, r)
+{
+	((p-r)%*%(p-r))/length(p)
+	
+}
+```
+
+```{r, echo=FALSE}
+set.seed(1)
+test.size <- 1/3
+data.dia.model <- data.dia[,c("Mortality","KtV.Adequacy.Rate", "Unemp", "Den.Pop", "Stations", "ReadRate", "PPPW", "Fistula", "Transfusion", "TransCat", "Hospitalization", "HospitalAdCat", "Infection", "InfectCat", "Chain", "Profit")]
+data.dia.all <- test.set(na.omit(data.dia.model),test.size)
+```
+
+## Main Effects Models  
+
+Then I'll start with building the model.  
+I began with:  
+-  KtV.Adequacy.Rate  
+-  Unemp  
+-  Den.Pop
+-  ReadRate  
+-  Infection  
+-  Transfusion  
+-  Hospitalization  
+as the main effects parameters  
+
+```{r, echo=FALSE}
+data.dia.mort1 <-data.dia.all
+data.dia.mort1$train <- data.dia.mort1$train [,c("Mortality","KtV.Adequacy.Rate", "Unemp","Den.Pop","Stations","ReadRate","PPPW","Fistula","Transfusion","Hospitalization","Infection")]
+data.dia.mort1$test <- data.dia.mort1$test [,c("Mortality","KtV.Adequacy.Rate", "Unemp","Den.Pop","Stations","ReadRate","PPPW","Fistula","Transfusion","Hospitalization","Infection")]
+
+# first model with given parameters -- all main effects
+lm.mort.train<-lm(Mortality ~ KtV.Adequacy.Rate + Unemp + Den.Pop + ReadRate + Infection + Transfusion + Hospitalization,data=data.dia.mort1$train) 
+summary(lm.mort.train)
+aic1<-AIC(lm.mort.train)
+diag.plot(lm.mort.train) # plot diagnostics
+lm.mort.train.pred<-predict(lm.mort.train,newdata=data.dia.mort1$test) 
+pmse.lm.mort<-mse(lm.mort.train.pred,data.dia.mort1$test$Mortality)
+```
+Fitted Mortality values mostly span between ~17.5 and 27.5, and a few values going down to 15 or to 30.  There is one observation that has larger leverage than most others based upon the cook's distance.  The data also matches the normal distribution tightly based upon the QQ plot except for the upper tail.  The AIC scored 24325.  The model itself was significant.  One thing I found especially interesting was the population density, where the mortality rate would increase as the population density decreased.  This may be due to the fact that lower population density is associated with less resources in rural areas.  As was expected, mortality rate increased with lower adequacy rates, higher infection rates, higher transfusion rates, and higher hospitalization rates.  
+  
+Next, to improve the model, I performed a boxcox analysis on the Mortality rate.  I also removed the highest-leverage observations so that they don't scew the results.
+
+```{r, echo=FALSE}
+# box cox transformation - find best lambda
+L<-boxCox(lm.mort.train, family="yjPower", plotit = F)$x[which.max(boxCox(lm.mort.train,family="yjPower", plotit = F)$y)] 
+
+# remove very influential observations
+obs <- which(cooks.distance(lm.mort.train)>0.15)
+data.dia.mort1$train <- data.dia.mort1$train[-obs,]
+
+# new model with transformed mortality and high leverage observations removed
+lm.mort2.train<-lm(Mortality^L ~ KtV.Adequacy.Rate + Unemp + Den.Pop + ReadRate + Infection + Transfusion + Hospitalization,data=data.dia.mort1$train)
+summary(lm.mort2.train)
+aic2<-AIC(lm.mort2.train)
+diag.plot(lm.mort2.train)
+
+# transform test mortality too
+data.dia.mort1$test$Mortality <- data.dia.all$test$Mortality^L
+
+lm.mort2.train.pred<-predict(lm.mort2.train,newdata=data.dia.mort1$test)
+pmse.lm.mort2<-mse(lm.mort2.train.pred^(1/L),data.dia.mort1$test$Mortality^(1/L))
+```
+The model AIC was vastly different since the output was transformed, changing to 10486.  Later, when testing with PMSE, we may be able to compare the models' efficacy directly.  On the diagnostic plots, the fitted values are different due to the transformation of the Mortality rate.  I account for this when I calculate my PMSE by raising the predictions to 1/L where L is the transformation power originally used (0.6 in this case).  
+
+I also performed stepwise regression on this improved model:  
+```{r, echo=FALSE}
+# step model
+lm.mort.train.step<-step(lm.mort2.train, trace=F)
+summary(lm.mort.train.step)
+aic3<-AIC(lm.mort.train.step)
+par(mfrow=c(2,2))
+diag.plot(lm.mort.train.step)
+lm.mort.train.step.pred<-predict(lm.mort.train.step,newdata=data.dia.mort1$test)
+pmse.lm.mort.step<-mse(lm.mort.train.step.pred^(1/L),data.dia.mort1$test$Mortality^(1/L))
+
+
+```
+The model's AIC narrowly improved -- to 10483.  The parameters of unemployment rate and infection rate were dropped as a result of the stepwise regression.  
+
+## Main Effects + Interaction Terms Models  
+
+Next I incorporated some interaction terms based upon the previous analysis -- I added KtV Adequacy Rate * Population Density and KtV Adequacy Rate * Unemployment rate:  
+
+```{r, echo=FALSE}
+# interaction terms between adequacy and location parameters
+lm.mort.inter.train<-lm(Mortality^L ~ KtV.Adequacy.Rate + Unemp + Den.Pop + ReadRate + Infection + Transfusion + Hospitalization + KtV.Adequacy.Rate*Den.Pop + KtV.Adequacy.Rate*Unemp, data=data.dia.mort1$train) 
+summary(lm.mort.inter.train)
+aic4<-AIC(lm.mort.inter.train)
+diag.plot(lm.mort.inter.train)
+lm.mort.inter.train.pred<-predict(lm.mort.inter.train,newdata=data.dia.mort1$test) 
+pmse.lm.mort.inter<-mse(lm.mort.inter.train.pred^(1/L),data.dia.mort1$test$Mortality^(1/L))
+```
+It's difficult to say if the extra interaction terms helped the model, they weren't statistically significant.  The AIC increased to 10487.  I further iterated, using stepwise regression to see if that would help by removing some of the extraneous parameters:  
+```{r, echo=FALSE}
+
+# step model of the interaction term model
+lm.mort.inter.train.step<-step(lm.mort.inter.train, trace=F)
+summary(lm.mort.inter.train.step)
+aic5<-AIC(lm.mort.inter.train.step)
+par(mfrow=c(2,2))
+diag.plot(lm.mort.inter.train.step)
+lm.mort.inter.train.step.pred<-predict(lm.mort.inter.train.step,newdata=data.dia.mort1$test)
+pmse.lm.mort.inter.step<-mse(lm.mort.inter.train.step.pred^(1/L),data.dia.mort1$test$Mortality^(1/L))
+```
+This didn't change the model much, with the same AIC as the non interaction-terms model and dropping the unemployment rate, infection rate, and KtV * Unemployment rate parameters.  
+
+Finally, I performed some partial f tests to understand the significance between models: 
+```{r, echo=FALSE}
+# Partial F Tests
+anova(lm.mort2.train,lm.mort.train.step) # between improved main effects model and stepwise main terms model
+anova(lm.mort.train.step,lm.mort.inter.train) # between step main effects model and interaction term model
+anova(lm.mort.inter.train,lm.mort.inter.train.step) # between interaction term model and step interaction term model
+anova(lm.mort.train.step,lm.mort.inter.train.step) # between step main effects model and step interaction term model
+
+
+```
+
+Of the four models that I performed these partial f tests upon - improved main effects, main effects stepwise, interaction terms, and interaction terms stepwise models - none were not statistically different from each other, so the smallest of them all would be chosen.  In this case, that would be the main effects stepwise model.
+This model contains the following parameters:  
+-  KtV.Adequacy.Rate  
+-  Den.Pop  
+-  Readmission Rate  
+-  Transfusion Rate  
+-  Hospitalization Rate    
+
+## PCA Terms Models  
+
+The final analysis I wanted to perform was to build some linear regression models using PCA.  I started with the following parameters:  
+-  KtV.Adequacy.Rate  
+-  Unemp  
+-  Den.Pop  
+-  Stations  
+-  ReadRate  
+-  PPPW  
+-  Fistula  
+-  Transfusion  
+-  Hospitalization  
+-  Infection  
+I added in Fistula rate and PPPW as parameters because they were both continuous values that I thought might add more variance to the data while also being clinically significant.  This is because surgically-created Fistulas are generally the best way to access blood when performing HD and PPPW factors in the patients that wish to receive transplants in the future.  
+
+```{r, echo=FALSE}
+# PCA models
+mort.train <-data.dia.mort1$train$Mortality
+mort.test <-data.dia.mort1$test$Mortality
+
+mort.pca <- princomp(data.dia.mort1$train[,-1], cor = T)
+cumsum <- cumsum(mort.pca$sdev^2)/sum(mort.pca$sdev^2)
+fviz_pca_biplot(mort.pca, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
+                col.ind=mort.train,label="var") +
+                ggtitle("Dialysis Data BiPlot - Colored based upon Mortality") + theme(plot.title = element_text(hjust = 0.5))
+```
+I only used 7 of the PCs because that constituted 80% of the variance in the data.  The Biplot showed little organization based upon the Mortality, so I am unsure of how successful this model will be.  I also transformed the mortality rate due to the huge difference it had made in previous models.   
+```{r, echo=FALSE}
+# use 7 PCs for 80 percent of the variation in the data
+lm.mort.pca.train<-lm(Mortality^L ~ ., data = data.frame(mort.pca$scores[,1:7], Mortality = mort.train)) 
+summary(lm.mort.pca.train)
+aic6<-AIC(lm.mort.pca.train)
+par(mfrow=c(2,2))
+diag.plot(lm.mort.pca.train)
+mort.pca.test <- princomp(data.dia.mort1$test[,-1], cor = T)
+lm.mort.pca.train.pred<-predict(lm.mort.pca.train,newdata=data.frame(mort.pca.test$scores[,1:7]))
+pmse.lm.mort.pca<-mse(lm.mort.pca.train.pred^(1/L),mort.test^(1/L))
+```
+I found similar/worse results than my previous models, with an AIC of 10593.  For my next model, I wanted to try to throw everything I could at the model that could be reasonably factored into mortality rate prediction.  Therefore, I added:  
+-  Number of Dialysis Stations  
+-  All of the categorical data for transfusion, infection, and hospitalization with -1, 0, and 1 representing Worse than, As, or Better than expected  
+-  Whether the facility is a chain  
+-  And whether the facility is for-profit  
+
+```{r, echo=FALSE}
+data.dia.mort2 <- data.dia.all
+data.dia.mort2$train$Mortality <- NULL
+data.dia.mort2$test$Mortality <- NULL
+data.dia.mort2$train <- data.dia.mort2$train[-obs,]
+data.dia.mort2$test <- data.dia.mort2$test[-obs,]
+mort.pca2 <- princomp(data.dia.mort2$train, cor = T)
+cumsum <- cumsum(mort.pca2$sdev^2)/sum(mort.pca2$sdev^2)
+fviz_pca_biplot(mort.pca2, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
+                col.ind=mort.train,label="var") +
+                ggtitle("Dialysis Data BiPlot - Colored based upon Mortality") + theme(plot.title = element_text(hjust = 0.5))
+#
+lm.mort.pca2.train<-lm(Mortality^L ~ ., data = data.frame(mort.pca2$scores, Mortality = mort.train)) 
+summary(lm.mort.pca2.train)
+aic7<-AIC(lm.mort.pca2.train)
+par(mfrow=c(2,2))
+diag.plot(lm.mort.pca2.train)
+mort.pca2.test <- princomp(data.dia.mort2$test, cor = T)
+lm.mort.pca2.train.pred<-predict(lm.mort.pca2.train,newdata=data.frame(mort.pca2.test$scores))
+pmse.lm.mort.pca2<-mse(lm.mort.pca2.train.pred^(1/L),mort.test^(1/L))
+
+```
+Again, the diagnostics were similar, despite have 15 PCs representing 100% of the computed variance.  Similar to the previous PCA, the Mortality rate has little organization based present in the first 2 principle components. The AIC was improved to 10453.  
+  
+For my final model, I wanted to revert back to a more simpler model, using only 3 PCs, representing ~35% of the variance in the PCA, to see if I was overfitting the training set.
+
+```{r, echo=FALSE}
+
+mort.pca3 <- princomp(data.dia.mort2$train, cor = T)
+#
+lm.mort.pca3.train<-lm(Mortality^L ~ ., data = data.frame(mort.pca3$scores[,1:3], Mortality = mort.train)) 
+summary(lm.mort.pca3.train)
+aic8<-AIC(lm.mort.pca3.train)
+par(mfrow=c(2,2))
+diag.plot(lm.mort.pca3.train)
+mort.pca3.test <- princomp(data.dia.mort2$test, cor = T)
+lm.mort.pca3.train.pred<-predict(lm.mort.pca3.train,newdata=data.frame(mort.pca3.test$scores[,1:3]))
+pmse.lm.mort.pca3<-mse(lm.mort.pca3.train.pred^(1/L),mort.test^(1/L))
+
+```
+As expected, the AIC did increase, but not absurdly so.  The real test was PMSE, which I will do next.  
+  
+## PMSE
+
+Now to compare all the models, I calculated the PMSE using the reserved Test Data Set:  
+
+```{r, echo=FALSE}
+
+# choose the interaction step model according to partial F test
+# siginificantly different than the main effects models and no different than the preliminary interaction model
+df <- data.frame(Model = c('Main Effects: Prelim','Main Effects: Transformed','Main Effects: Step','Main Effects+Interaction','Main Effects+Interaction: Step','PCA','PCA: Larger Model', 'PCA: Simplified'),
+                 AIC = c(aic1, aic2, aic3, aic4, aic5,aic6,aic7,aic8),
+                 PMSE = c(pmse.lm.mort,pmse.lm.mort2,pmse.lm.mort.step,pmse.lm.mort.inter,pmse.lm.mort.inter.step,pmse.lm.mort.pca,pmse.lm.mort.pca2,pmse.lm.mort.pca3))
+kable(df)
+```
+Nearly all of the PMSE values were the same, but I was somewhat surprised to see that my preliminary model, despite the large AIC performed the best on the test data set.  This shows that I was probably overfitting my models and probably didn't need to transform the output variable as was indicated during my boxcox analysis.  Additionally, all of the PCA models performed the worst of the group; the best performing model was the simplest one that I created last.  Based upon the PCA Bipots, I can see why it's difficult to predict Mortality with the given data, as there seemed to be little organization based upon the mortality.  
+  
+I can accept the alternative hypothesis on all of the given models since they were statistically significant, but I hesitate to say that these models are useful.  This points to the fact that ESRD patients are extremely complex.  Oftentimes, there is no predictable metric that points to mortality because the chronic condition of kidney failure presents acute clinical issues that result in death such as instant cardiac death (due to imbalance of electrolytes that control heart function) or multiple organ failure.  
+  
+One last analysis I wanted to perform was to see how some deviation in the parameters could affect 4-year survival.  I calculated the survival based upon the testing set and then measured how 1) a 50% reduction in Hospitalization and 2) a move from a more rural to an urban setting (increase in population density to 16000 per square mile, which is the density of a major city, from a median of ~2700) would affect 4-year survivability.  I used the 1st model because it had the best PMSE compared to all of the other models.  First, here is the original mortality from the testing dataset:  
+```{r, echo=FALSE, fig.height = 4, fig.width = 4,fig.align="center"}
+testsurvival <- (1 - data.dia.mort1$test$Mortality^(1/L) / 100)^4
+# model <- lm.mort.inter.train
+model <- lm.mort.train
+# model <- lm.mort2.train
+
+surv.mort.nochange <- data.dia.mort1$test
+surv.mort.nochange.pred<-predict(model,newdata=surv.mort.nochange)
+# surv.mort.nochange.pred<-surv.mort.nochange.pred^(1/L)
+surv.mort.nochange.survival <- (1 - surv.mort.nochange.pred / 100)^4
+
+surv.mort.hosp <- data.dia.mort1$test
+surv.mort.hosp$Hospitalization <- surv.mort.hosp$Hospitalization*0.5
+lm.mort.hosp.pred<-predict(model,newdata=surv.mort.hosp)
+# lm.mort.hosp.pred<-lm.mort.hosp.pred^(1/L)
+reduc.hosp.survival <- (1 - lm.mort.hosp.pred / 100)^4
+
+surv.mort.den <- data.dia.mort1$test
+newpop <- 16000
+surv.mort.den$Den.Pop <- newpop*2
+lm.mort.den.pred<-predict(model,newdata=surv.mort.den) 
+# lm.mort.den.pred<-lm.mort.den.pred^(1/L)
+inc.den.survival <- (1 - lm.mort.den.pred / 100)^4
+
+
+
+ggplot(as.data.frame(data.dia.mort1$test$Mortality^(1/L)), aes(x=data.dia.mort1$test$Mortality^(1/L))) + 
+  geom_boxplot(col= "steelblue") + ggtitle("Mortality") +
+  labs(x = "Mortality (Per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + coord_flip()
+
+# p1 <-ggplot(as.data.frame(testsurvival), aes(x=testsurvival)) +
+#   geom_boxplot(col= "steelblue")  + coord_cartesian(ylim=c(0,1)) + ggtitle("Survival (4 yrs) ") +
+#   labs(x = "Survival (Probability)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + coord_flip()
+# 
+# p2 <-ggplot(as.data.frame(reduc.hosp.survival), aes(x=reduc.hosp.survival)) + 
+#   geom_boxplot(col= "steelblue") + coord_cartesian(ylim=c(0,1)) + ggtitle("50% Hospital Reduction") +
+#   labs(x = "Survival (Probability)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + coord_flip() 
+# 
+# p3 <-ggplot(as.data.frame(inc.den.survival), aes(x=inc.den.survival)) + 
+#   geom_boxplot(col= "steelblue") + ggtitle("Pop. Density: Major City") +
+#   labs(x = "Survival (Probability)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) + coord_flip() + ylim(0,0.75)
+# 
+# ggarrange(p0,p1,p2,p3,ncol=4)
+```
+
+Then, calculating from the original mortality and running through my model, I found the 4-year survival probability.  In the ground truth case, the median is ~0.37.  The model shows the same median survival, but substantially lower variance. The survival based upon the parameter adjustments of 50% hospitalization reduction and setting the population density to that of a major city are shown below:
+
+```{r, echo=FALSE, fig.height = 4, fig.width = 11,fig.align="center"}
+
+survival.new <- data.frame(Survival=testsurvival, Category = rep("1: No Change (Ground Truth)",length(testsurvival)))
+survival.new <- rbind(survival.new,data.frame(Survival=surv.mort.nochange.survival, Category = rep("2: No Change (Predicted)", length(surv.mort.nochange.survival))))
+survival.new <- rbind(survival.new,data.frame(Survival=reduc.hosp.survival, Category = rep("3: 50% Hospitalization Reduction",length(reduc.hosp.survival))))
+survival.new <- rbind(survival.new,data.frame(Survival=inc.den.survival, Category = rep("4: Major City Population Density",length(inc.den.survival))))
+  # survival.new <- data.frame(NoChange=testsurvival, HospitalizationReduction=reduc.hosp.survival, MajorCityDensity=inc.den.survival)
+
+med.nochange <- paste(c("Median: ", round(boxplot.stats(testsurvival)$stats[3],2)), collapse = " ")
+med.nochange2 <- paste(c("Median: ", round(boxplot.stats(surv.mort.nochange.survival)$stats[3],2)), collapse = " ")
+med.hosp <- paste(c("Median: ", round(boxplot.stats(reduc.hosp.survival)$stats[3],2)), collapse = " ")
+med.pop <- paste(c("Median: ", round(boxplot.stats(inc.den.survival)$stats[3],2)), collapse = " ")
+
+ggplot(x=Category, y=Survival, data=survival.new, aes(x=Category, y=Survival)) + 
+  geom_boxplot(col= "steelblue") + ggtitle("4 Year Survival") +
+  labs(y = "Survival (Probability)") + theme(plot.title = element_text(hjust = 0.5), axis.title.x=element_blank(),  axis.ticks.x=element_blank()) + ylim(0,1) + 
+  geom_text(x=1.3, y=0.5, label=med.nochange, color="red") +
+  geom_text(x=2.3, y=0.5, label=med.nochange2, color="red") +
+  geom_text(x=3.3, y=0.5, label=med.hosp, color="red") +
+  geom_text(x=4.3, y=0.5, label=med.pop, color="red")
+
+
+```
+Based upon my results of a 50% reduction in hospitalization and holding everything else constant, there would be ~16% increase in survival probability after 4 years.  If the population density would increase to that of a major city and holding everything else constant, there would be an ~11% percent increase in survival probability after 4 years.  However, as I stated before, it is clear that the model did not fully capture the variance of the original data.  
+
+# Conclusions  
+I thought that this project was an interesting one, as it gave me more insight into the major quality metrics used to evaluate dialysis facilities.  However, I was surprised to see that many of the metrics don't necessarily predict mortality.  As evidenced by my PCA analysis, there was even orthogonality between the Star Rating of the facility and the mortality rate of those same facilities.  Additionally, changing my model parameters did not vastly increase the PMSE during the testing phase of this project.  This is insightful in several ways:  
+1) There are other quality metrics that are more highly valued by CMS.  
+2) CMS doesn't weight mortality as high because they don't want to incentivize facilities turning away the sickest patients (anecdotally, I've been told by Nephrologists that this does happen at for-profit locations.  John Oliver's Last Week Tonight episode on Da Vita Dialysis Clinics also points to this reality).  
+3) ESRD patients are very sick patients and Mortality may not be directly attributed to their dialysis care, but instead due to other acute illnesses.  
+I certainly wish that I could've gotten a more conclusive predictive result, but it was interesting to learn more about the topic by delving into government data. It is a monumental task to ensure that the best possible reimbursement lines up with the best quality care and I appreciate that CMS has made this data publicly available for evaluation. 
+ 
+
+## Future Work  
+If I were to continue work on this project, I would attempt to segment out some of the parameters for use by patients with ESRD so that they can best choose their dialysis facility instead of simply going by the "Star" Rating, which may have some alternative incentives, such as not accepting patients that are too sick or may otherwise lower their quality metrics.  I would also want to point out the major pain points in the Renal Continuum of Care, identifying the segments that are prime for innovation, most liable to introduce error, or represent an opportunity for clinicians to improve their care.  Finally, I would attempt to add more context to the models with better demographic data.  
+
+## Issues  
+There was one main issue that I came across when it came to working with this dataset:  
+The quality metrics were mostly focused around the "effects" of bad care instead of the indicators.  That is why I tried to pull in unemployment numbers and population density, which added some context to the project.  I think aggregate patient data would be really useful to identify risks from patient-specific, locale, demographic, or clinician perspectives.  Once identified, proper actions may be preemptively applied to produce the best outcomes.  Some of these metrics may include average patient age, comorbidities, demographics, local statistics, and clinician composition (nurses, doctors, other health professionals).  I understand that this data may be difficult to come by, but if it results in better outcomes, it would be worth gathering.  Additionally all the proper care to ensure patient privacy must be taken.  
+A second issue I encountered had to do with the standardization of government data.  When seeking data sets that I could use to add more locale-specific data, I found that most of the data was segmented by FIPS Codes (as it was in most Census datasets) instead of Zip codes (as it was in the dialysis dataset).  This misalignment between government datasets is understandable, but hinders some analysis as integration of two different datasets can be time-consuming.  If I were to continue, I would put in the effort to seek the proper FIPS codes based upon facility addresses.  However, I would have to make an assumption that data corresponding to a FIPS code is accurate at the location of the dialysis facility.  It is true that I made a similar assumption when I found a dataset that used Zip codes, but Zip codes often represent smaller areas, so one could argue that they are more accurate to the respective locale.  I certainly like the idea of the FIPS codes, with its specific and informative sub-fields, but Zip codes are so prevalent that it would be a monumental (and likely unjustified) task to transfer to FIPS.     
+
+
+
+
+
+
+
+# Data Sources
+ESRD QIP - Dialysis Adequacy - Payment Year 2020  
+https://data.cms.gov/provider-data/dataset/ip8v-3vdj  
+
+
+Dialysis Facility - Listing by Facility  
+https://data.cms.gov/provider-data/dataset/23ew-n7w9  
+
+
+US Population Density and unemployment rate by Zip Code  
+https://blog.splitwise.com/2014/01/06/free-us-population-density-and-unemployment-rate-by-zip-code/  
+
