@@ -11,15 +11,23 @@ Shared code for [STAT 5630 Statistical Machine Learning Final Project](https://g
   -  Analysis of the Opioid Epidemic from the perpective of prescribers
   -  Data is initially from [U.S. Opiate Prescriptions/Overdoses on Kaggle](https://www.kaggle.com/apryor6/us-opiate-prescriptions), was downloaded from [Centers for Medicare and Medicaid Site, CY 2014](https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/Medicare-Provider-Charge-Data/PartD2017), and processed by Dr. Alan Pryor.
   -  I, along with my team, performed further processing and applied machine learning techniques with the goal of finding the impact of presecription drugs upon drug-related deaths in the United States.
+  
+Shared code for [SYS 6021 Linear Statistical Models Final Project](https://github.com/jbonaffini/public_coding_projects/tree/master/SYS6021_Project)
+
+  -  Analysis of aggregate datasets from Centers for Medicare and Medicaid Services regarding dialysis facilties and their performance at these links: [Dialysis Adequacy](https://data.cms.gov/provider-data/dataset/ip8v-3vdj), [Dialysis Facility Performance](https://data.cms.gov/provider-data/dataset/23ew-n7w9)
+  -  I evaluated the various quality metrics and attempted to create linear models to predict the mortality of facilities' patients based upon dialysis facility characteristics.
+  -  I also looked into how demographic or location-specific information may affect mortality.
 
 ## Presentations and Papers
-[[BME 6310 Computational BME Preliminary Group Presentation](https://docs.google.com/presentation/d/1fura69Lllvz_mkbHlCeZBSAx9Tm_pFQY4ch9zQ2Vc-M/edit?usp=sharing)
+[BME 6310 Computational BME Preliminary Group Presentation](https://docs.google.com/presentation/d/1fura69Lllvz_mkbHlCeZBSAx9Tm_pFQY4ch9zQ2Vc-M/edit?usp=sharing)
 
 [BME 6310 Computational BME Final Group Presentation](https://github.com/jbonaffini/UVA_ME_shared/blob/master/BME6310_Project/BME6310_FinalPresentation_Group1.pdf)
 
 [STAT 5630 Statistical Machine Learning Final Project Paper](https://github.com/jbonaffini/UVA_ME_shared/blob/master/STAT5630_Project/Opioid_Report_Bonaffini_Ndong_Ryoo.pdf)
 
 [STAT 5630 Statistical Machine Learning Final Project Presentation](https://github.com/jbonaffini/UVA_ME_shared/blob/master/STAT5630_Project/Opioid_Presentation_Bonaffini_Ndong_Ryoo.pdf)
+
+[SYS 6021 Linear Statistical Models Final Project](https://github.com/jbonaffini/public_coding_projects/tree/master/SYS6021_Project)
 
 ## Standards
 All files are to contain no spaces, just use underscores
