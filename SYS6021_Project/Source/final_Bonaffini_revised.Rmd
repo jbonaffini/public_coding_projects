@@ -279,9 +279,10 @@ As you can see patient hospitalization is frequent, with the center of the distr
 
 Infection Rate is a good measurement of quality of dialysis care because the access for either hemodialyis patients (vascular access through a fistula in the arm, or a CVC in the chest) or peritoneal dialysis patients (abdominal access via a peritoneal catheter) can become infected. This can result in disaster and may point to lack of education in how to properly care for the dialysis access or technique failure on the part of the clinician performing the procedure.  
 ```{r,echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
-p1 <- ggplot(as.data.frame(data.dia$Infection), aes(x=data.dia$Infection)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Infection Rate Hist") + labs(x = "Infection Rate (per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5))
+p1 <- ggplot(as.data.frame(data.dia$Infection), aes(x=data.dia$Infection)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Infection Ratio Hist") + labs(x = "Infection Ratio (actual/predicted)") + theme(plot.title = element_text(hjust = 0.5))
 p2 <- ggplot(as.data.frame(data.dia$Infection), aes(sample=data.dia$Infection)) + stat_qq() + stat_qq_line() + ggtitle("Infection Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
 ggarrange(p1,p2)
+pinfec<-p1
 ```
 ```{r,echo=FALSE, fig.height = 3, fig.width = 6,fig.align="center"}
 qqPlot(data.dia$Infection, distribution = "pois", lambda = mean(data.dia$Infection), main="Infection Rate vs Poisson Dist",id=FALSE)
@@ -293,6 +294,8 @@ Transfusion rate is more a measurement of patient pharma care -- dialysis patien
 p1 <- ggplot(as.data.frame(data.dia$Transfusion), aes(x=data.dia$Transfusion)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("Transfusion Rate Hist") + labs(x = "Transfusion Rate (per 100 patient years)") + theme(plot.title = element_text(hjust = 0.5))
 p2 <- ggplot(as.data.frame(data.dia$Transfusion), aes(sample=data.dia$Transfusion)) + stat_qq() + stat_qq_line() + ggtitle("Transfusion Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
 ggarrange(p1,p2)
+ptrans<-p1
+ggarrange(pinfec,ptrans)
 ```
 
 ```{r,echo=FALSE, fig.height = 3, fig.width = 6,fig.align="center"}
@@ -312,16 +315,18 @@ Therefore, a clearance of 1.2 (as shown one of our other parameter names: PercHD
 p1 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Rate), aes(x=data.dia$KtV.Adequacy.Rate)) + geom_histogram(fill= "steelblue", bins = 20) + ggtitle("KtV Rate Hist") + labs(x = "Percent Adequacy") + theme(plot.title = element_text(hjust = 0.5))
 p2 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Rate), aes(sample=data.dia$KtV.Adequacy.Rate)) + stat_qq() + stat_qq_line() + ggtitle("KtV  Rate vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
 ggarrange(p1,p2)
+prate<-p1
 ```
 
 ```{r,echo=FALSE, fig.height = 3, fig.width = 6,fig.align="center"}
 qqPlot(data.dia$KtV.Adequacy.Rate, distribution = "pois", lambda = mean(data.dia$KtV.Adequacy.Rate), main="KtV Rate vs Poisson Dist",id=FALSE)
 ```
 This data is really difficult to match to a distribution since it approaches 100.  It doesn't match the normal distribution nor the poisson distribution.  CMS decided to map this data to a value between 1 and 10 -- the KtV Adequacy Score, so I'll see if that is closer to a normal distribution.  (this was done by CMS to more easily compare facilities)  
-```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
+```{r, echo=FALSE, fig.height = 4, fig.width = 12,fig.align="center"}
 p1 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Score), aes(x=data.dia$KtV.Adequacy.Score)) + geom_histogram(fill= "steelblue", bins = 10) + ggtitle("KtV Score Hist") + labs(x = "KtV Score") + theme(plot.title = element_text(hjust = 0.5))
 p2 <- ggplot(as.data.frame(data.dia$KtV.Adequacy.Score), aes(sample=data.dia$KtV.Adequacy.Score)) + stat_qq() + stat_qq_line() + ggtitle("KtV Score vs Normal Dist") + theme(plot.title = element_text(hjust = 0.5))
-ggarrange(p1,p2)
+# ggarrange(p1,p2)
+ggarrange(prate,p1,p2,ncol=3,nrow=1)
 ```
 The score is still heavily weighted toward the upper end of the rating scale (10) but it still has a little bit more contrast in the data.  
 
@@ -329,7 +334,7 @@ For the sake of my analysis, I will narrow down to predict just Mortality Rate b
 
 One other thing I wanted to capture was the survival-rate-until-transplant, as a function of the mortality.  Right now, the average length of time to wait for a kidney is 4 years (https://transplantliving.org/kidney/the-kidney-transplant-waitlist/).  This varies drastically with age, location, compliance, personal decisions of patients, and general health.  Additionally kidney transplant matching is performed by independent Organ Procurement Organizations (OPO) which have complex algorithms to match kidneys to renal failure patients.   For the sake of simplification, I will assume 4 years is the time a patient must wait for a kidney because I could not find reputable data that was specific to states or OPO networks.  I calculated the chance of survival until transplant by calculating (1- yearly mortality)^4 and then plotted on a boxplot. I also plotted the Percent of Patients Waitlisted.
 
-```{r, echo=FALSE, fig.height = 4, fig.width = 7,fig.align="center"}
+```{r, echo=FALSE, fig.height = 4, fig.width = 8,fig.align="center"}
 data.dia$survival <- (1 - data.dia$Mortality / 100)^4
 
 p1 <-ggplot(as.data.frame(data.dia$survival), aes(x=data.dia$survival)) + 
@@ -352,7 +357,9 @@ Next I'm going to look at some of the other parameters and see what I can gather
 param<-c("Star", "Stations","PercHDKtV1.2","PercPDKtV1.7","ReadRate",
          "PPPW","Unemp","Den.Pop","Infection","Transfusion", 
          "Mortality", "Hospitalization", "KtV.Adequacy.Score")
-ggpairs(data.dia[,param],progress=FALSE)
+ggpairs(data.dia[,param],progress=FALSE) + 
+  theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())
 
 ```
 This is a lot of information to process; I'll make some high level observations that will steer my further analysis and model building:  
@@ -406,7 +413,7 @@ It looks like the data is quite varied -- only ~24% of the variance in explained
 - The quality metrics all point in the same direction, except for KtV Score, which is negatively correlated to these metrics (makes sense because mortality is lower for higher KtV scores)  
 
 I'm going to try this PCA one more time with some of the parameters that are orthogonal to the quality metrics removed  
-```{r, fig.height = 12, fig.width = 12, fig.align="center",echo=FALSE}
+```{r, fig.height = 10, fig.width = 10, fig.align="center",echo=FALSE}
 
 data.dia.nona$HDMonthsKtV <- NULL
 data.dia.nona$PDMonthsKtV <- NULL
@@ -417,9 +424,10 @@ data.dia.nona$OfferHD <- NULL
 data.dia.nona$OfferPD <- NULL
 data.dia.nona$Stations <- NULL
 data.dia.pca.corr <- princomp(data.dia.nona[,st_data:length(data.dia.nona)], cor = T)
-fviz_pca_biplot(data.dia.pca.corr, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
+fviz_pca_biplot(data.dia.pca.corr, repel=TRUE,pointsize=2, col.var="red",labelsize=6,
                 col.ind=data.dia.nona$Star,label="var") +
-                ggtitle("Dialysis Data BiPlot - Colored based upon Star Rating") + theme(plot.title = element_text(hjust = 0.5))
+                ggtitle("Dialysis Data BiPlot - Colored based upon Star Rating") + theme(plot.title = element_text(hjust = 0.5)) + 
+                ylim(-5,5) + xlim(-5,5)
 
 
 ```
@@ -666,9 +674,10 @@ mort.test <-data.dia.mort1$test$Mortality
 
 mort.pca <- princomp(data.dia.mort1$train[,-1], cor = T)
 cumsum <- cumsum(mort.pca$sdev^2)/sum(mort.pca$sdev^2)
-fviz_pca_biplot(mort.pca, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
+fviz_pca_biplot(mort.pca, repel=TRUE,pointsize=2, col.var="red",labelsize=6,
                 col.ind=mort.train,label="var") +
-                ggtitle("Dialysis Data BiPlot - Colored based upon Mortality") + theme(plot.title = element_text(hjust = 0.5))
+                ggtitle("Dialysis Data BiPlot - Colored based upon Mortality") + theme(plot.title = element_text(hjust = 0.5))+
+                ylim(-5,5) + xlim(-5,5)
 ```
 I only used 7 of the PCs because that constituted 80% of the variance in the data.  The Biplot showed little organization based upon the Mortality, so I am unsure of how successful this model will be.  I also transformed the mortality rate due to the huge difference it had made in previous models.   
 ```{r, echo=FALSE}
@@ -698,7 +707,9 @@ mort.pca2 <- princomp(data.dia.mort2$train, cor = T)
 cumsum <- cumsum(mort.pca2$sdev^2)/sum(mort.pca2$sdev^2)
 fviz_pca_biplot(mort.pca2, repel=TRUE,pointsize=2, col.var="red",labelsize=5,
                 col.ind=mort.train,label="var") +
-                ggtitle("Dialysis Data BiPlot - Colored based upon Mortality") + theme(plot.title = element_text(hjust = 0.5))
+                ggtitle("Dialysis Data BiPlot - Colored based upon Mortality") + theme(plot.title = element_text(hjust = 0.5))+
+                ylim(-5,5) + xlim(-5,5)
+                
 #
 lm.mort.pca2.train<-lm(Mortality^L ~ ., data = data.frame(mort.pca2$scores, Mortality = mort.train)) 
 summary(lm.mort.pca2.train)
